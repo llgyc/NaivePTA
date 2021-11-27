@@ -1,0 +1,4 @@
+target/*
+sootOutput/*
+result.txt
+*.DS_Store*
