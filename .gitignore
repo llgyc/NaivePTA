@@ -1,4 +1,4 @@
-target/*
-sootOutput/*
-result.txt
+pta/target/*
+pta/sootOutput/*
+pta/result.txt
 *.DS_Store*
