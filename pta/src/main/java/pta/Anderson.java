@@ -64,12 +64,21 @@ public class Anderson {
 			Pair<Pointer, HashSet<Location>> pair = WL.remove();
 			Pointer n = pair.getKey();
 			HashSet<Location> pts = pair.getValue();
+			System.out.println(n);
+			for (Location l : pts) {
+				System.out.print(" ");
+				
+				System.out.print(l.id);
+				
+			}
+			System.out.println();
+
 			if (!pt.containsKey(n)) { pt.put(n, new HashSet<>()); }
 			HashSet<Location> delta = new HashSet<>();
 			for (Location l : pts) {
 				if (!pt.get(n).contains(l)) delta.add(l);
 			}
-			propagate(n, pts);
+			propagate(n, delta);
 			if (!(n instanceof OPointer)) {
 				for (Location o : delta) {
 					for (UnitWithPos uwp : S) {
@@ -77,7 +86,6 @@ public class Anderson {
 						if (!(u instanceof JAssignStmt)) continue;
 						JAssignStmt jas = (JAssignStmt) u;
 						if (jas.getLeftOp() instanceof JInstanceFieldRef) {
-							System.out.println(jas.getRightOp());
 							if (!Pointer.acceptable(jas.getRightOp())) continue;
 							JInstanceFieldRef jifr = (JInstanceFieldRef) jas.getLeftOp();
 							Value x = jifr.getBase();
@@ -159,7 +167,17 @@ public class Anderson {
 					allocId = ((IntConstant) ie.getArgs().get(0)).value;
 					continue;
 				}
+				if (ie.getMethod().toString().equals("<benchmark.internal.Benchmark: void alloc(int)>")) {
+					allocId = ((IntConstant) ie.getArgs().get(0)).value;
+					continue;
+				}
 				if (ie.getMethod().toString().equals("<benchmark.internal.BenchmarkN: void test(int,java.lang.Object)>")) {
+					Value v = ie.getArgs().get(1);
+					int id = ((IntConstant) ie.getArgs().get(0)).value;
+					Pointer p = Pointer.getPointer(m, v);
+					queries.put(id, p);
+				}
+				if (ie.getMethod().toString().equals("<benchmark.internal.Benchmark: void test(int,java.lang.Object)>")) {
 					Value v = ie.getArgs().get(1);
 					int id = ((IntConstant) ie.getArgs().get(0)).value;
 					Pointer p = Pointer.getPointer(m, v);
@@ -184,7 +202,6 @@ public class Anderson {
 				} else if (Pointer.acceptable(ds.getLeftOp()) 
 					&& Pointer.acceptable(ds.getRightOp())) {
 					// Include JAssignStmt & JIdentityStmt
-					System.out.println(ds.getLeftOp());
 					Pointer x = Pointer.getPointer(m, ds.getLeftOp());
 					Pointer y = Pointer.getPointer(m, ds.getRightOp());
 					addEdge(y, x);
@@ -209,7 +226,11 @@ public class Anderson {
 			} else continue;
 			if (ie.getMethod().toString().equals("<benchmark.internal.BenchmarkN: void alloc(int)>")) 
 				continue;
+			if (ie.getMethod().toString().equals("<benchmark.internal.Benchmark: void alloc(int)>")) 
+				continue;
 			if (ie.getMethod().toString().equals("<benchmark.internal.BenchmarkN: void test(int,java.lang.Object)>"))
+				continue;
+			if (ie.getMethod().toString().equals("<benchmark.internal.Benchmark: void test(int,java.lang.Object)>"))
 				continue;
 			if (!(ie instanceof StaticInvokeExpr)) continue;
 			
@@ -249,7 +270,11 @@ public class Anderson {
 			} else continue;
 			if (ie.getMethod().toString().equals("<benchmark.internal.BenchmarkN: void alloc(int)>")) 
 				continue;
+			if (ie.getMethod().toString().equals("<benchmark.internal.Benchmark: void alloc(int)>")) 
+				continue;
 			if (ie.getMethod().toString().equals("<benchmark.internal.BenchmarkN: void test(int,java.lang.Object)>"))
+				continue;
+			if (ie.getMethod().toString().equals("<benchmark.internal.Benchmark: void test(int,java.lang.Object)>"))
 				continue;
 			if (ie instanceof StaticInvokeExpr) continue;
 			InstanceInvokeExpr iie = (InstanceInvokeExpr)ie;
@@ -318,7 +343,7 @@ class SameMethod {
 	public static boolean test(SootMethod m1, SootMethod m2) {
 		if (!(m1.getDeclaringClass().getName().equals(
 			m2.getDeclaringClass().getName()))) return false;
-		if (!(m1.getName().equals(m2.getName()))) return false;
+		if (!(m1.getSignature().equals(m2.getSignature()))) return false;
 		return true;
 	}
 }
@@ -338,7 +363,6 @@ abstract class Pointer {
 		} else throw new Exception();
 	}
 	public static boolean acceptable(Value v) {
-		if (v == null) System.out.println("fuck");
 		if (v instanceof Local) return true;
 		if (v instanceof Ref) {
 			if (!(v instanceof JInstanceFieldRef)) return true;
@@ -348,38 +372,12 @@ abstract class Pointer {
 	/*
 	sm -> Class && Method
 	Types:
-	- Query (now deleted)
 	- Variables
 		+ Local
 		+ Ref (Static, Params, This)
 	- Object Field
 	*/
 }
-
-// class QPointer extends Pointer {
-// 	public static Pointer getQPointer(SootMethod m, int qid) {
-// 		QPointer tmp = new QPointer(m, qid);
-// 		for (Pointer p : ptrs) {
-// 			if (p.equals(tmp)) return p;
-// 		}
-// 		ptrs.add(tmp);
-// 		return tmp;
-// 	}
-// 	QPointer(SootMethod m, int qid) {
-// 		super(m);
-// 		queryID = qid;
-// 	}
-// 	int queryID;
-// 	public boolean equals(Object obj) {
-// 		if (obj instanceof QPointer) {
-// 			QPointer qp = (QPointer) obj;
-// 			if (!SameMethod.test(sm, qp.sm)) return false;
-// 			if (queryID != qp.queryID) return false;
-// 			return true;
-// 		}
-// 		return false;
-// 	}
-// }
 
 class LPointer extends Pointer {
 	public static Pointer getLPointer(SootMethod m, Local l) {
@@ -404,6 +402,10 @@ class LPointer extends Pointer {
 			return true;
 		}
 		return false;
+	}
+	@Override
+	public String toString() {
+		return sm.getDeclaringClass().getName()+sm.getName()+local.getName();
 	}
 }
 
@@ -450,6 +452,10 @@ class RPointer extends Pointer {
 		}
 		return false;
 	}
+	@Override
+	public String toString() {
+		return sm.getDeclaringClass().getName()+sm.getName()+name;
+	}
 }
 
 class OPointer extends Pointer {
@@ -478,25 +484,11 @@ class OPointer extends Pointer {
 		}
 		return false;
 	}
+	@Override
+	public String toString() {
+		return loc.toString() + field;
+	}
 }
-
-// class PPointer extends Pointer {
-// 	public static Pointer getPPointer() {
-// 		PPointer tmp = new PPointer();
-// 		for (Pointer p : ptrs) {
-// 			if (p.equals(tmp)) return p;
-// 		}
-// 		ptrs.add(tmp);
-// 		return tmp;
-// 	}
-// 	PPointer() {}
-// 	public boolean equals(Object obj) {
-// 		if (obj instanceof PPointer) {
-// 			return true;
-// 		}
-// 		return false;
-// 	}
-// }
 
 class Location {
 	public static int p_cnt = 0;
@@ -515,28 +507,12 @@ class Location {
 		}
 		return false;
 	}
+	@Override
+	public String toString() {
+		Integer i = id;
+		return i.toString();
+	}
 }
-
-// class CGEdges {
-// 	public SootMethod from_sm;
-// 	public int from_lineno;
-// 	public SootMethod to_sm;
-// 	CGEdges(SootMethod fsm, int lineno, SootMethod tsm) {
-// 		from_sm = fsm;
-// 		from_lineno = lineno;
-// 		to_sm = tsm;
-// 	}
-// 	public boolean equals(Object obj) {
-// 		if (obj instanceof CGEdges) {
-// 			CGEdges cge = (CGEdges) obj;
-// 			if (!SameMethod.test(from_sm, cge.from_sm)) return false;
-// 			if (!(from_lineno != cge.from_lineno)) return false;
-// 			if (!SameMethod.test(to_sm, cge.to_sm)) return false;
-// 			return true;
-// 		}
-// 		return false;
-// 	}
-// }
 
 class UnitWithPos {
 	public SootMethod _sm;
@@ -551,7 +527,7 @@ class UnitWithPos {
 		if (obj instanceof UnitWithPos) {
 			UnitWithPos uwp = (UnitWithPos) obj;
 			if (!SameMethod.test(_sm, uwp._sm)) return false;
-			if (!(_lineno != uwp._lineno)) return false;
+			if ((_lineno != uwp._lineno)) return false;
 			return true;
 		}
 		return false;
