@@ -73,14 +73,6 @@ public class Anderson {
 			Pair<Pointer, HashSet<Location>> pair = WL.remove();
 			Pointer n = pair.getKey();
 			HashSet<Location> pts = pair.getValue();
-			System.out.println(n);
-			for (Location l : pts) {
-				System.out.print(" ");
-				
-				System.out.print(l.id);
-				
-			}
-			System.out.println();
 
 			if (!pt.containsKey(n)) { pt.put(n, new HashSet<>()); }
 			HashSet<Location> delta = new HashSet<>();
@@ -196,11 +188,6 @@ public class Anderson {
 	void addReachable(SootMethod m) throws Exception {
 		if (RM.contains(m)) return;
 		RM.add(m);
-		System.out.println("================");
-		System.out.println(m.getDeclaringClass().getName()+" "+m.getSignature());
-		System.out.println(m.ctx.strlist.size());
-		if (m.ctx.strlist.size() > 0) System.out.println(m.ctx.strlist.get(0));
-		if (m.ctx.strlist.size() > 1) System.out.println(m.ctx.strlist.get(1));
 		if (!m.hasActiveBody()) return;
 		Integer cnt = 0;
 		Integer allocId = 0;
@@ -701,7 +688,7 @@ class Context {
 	Context(LinkedList<String> sml) { strlist = (LinkedList<String>)sml.clone(); }
 	public void add(String s) {
 		strlist.addFirst(s);
-		while (strlist.size() > 2) {
+		while (strlist.size() > 3) {
 			strlist.removeLast();
 		}
 	}
