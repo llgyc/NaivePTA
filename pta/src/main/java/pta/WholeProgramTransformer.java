@@ -41,16 +41,24 @@ public class WholeProgramTransformer extends SceneTransformer {
 
             if (sm.hasActiveBody()) {
                 for (Unit u : sm.getActiveBody().getUnits()) {
-                    // System.out.println("S: " + u);
-                    // System.out.println(u.getClass());
                     if (u instanceof InvokeStmt) {
                         InvokeExpr ie = ((InvokeStmt) u).getInvokeExpr();
                         if (ie.getMethod().toString().equals("<benchmark.internal.BenchmarkN: void alloc(int)>")) {
                             allocId = ((IntConstant) ie.getArgs().get(0)).value;
                             allocs.add(allocId);
                         }
+                        if (ie.getMethod().toString().equals("<benchmark.internal.Benchmark: void alloc(int)>")) {
+                            allocId = ((IntConstant) ie.getArgs().get(0)).value;
+                            allocs.add(allocId);
+                        }
                         if (ie.getMethod().toString()
                                 .equals("<benchmark.internal.BenchmarkN: void test(int,java.lang.Object)>")) {
+                            Value v = ie.getArgs().get(1);
+                            int id = ((IntConstant) ie.getArgs().get(0)).value;
+                            queries.put(id, (Local) v);
+                        }
+                        if (ie.getMethod().toString()
+                                .equals("<benchmark.internal.Benchmark: void test(int,java.lang.Object)>")) {
                             Value v = ie.getArgs().get(1);
                             int id = ((IntConstant) ie.getArgs().get(0)).value;
                             queries.put(id, (Local) v);
