@@ -30,7 +30,9 @@ public class WholeProgramTransformer extends SceneTransformer {
             SootClass mainClass = Scene.v().getMainClass();
 			Anderson anderson = new Anderson();
 			SootMethod m = mainClass.getMethodByName("main");
-			anderson.solve(m);
+			Context c = new Context();
+			pta.SootMethod mentry = new pta.SootMethod(c, m);
+			anderson.solve(mentry);
         } catch (Exception e) {
 			ReachableMethods reachableMethods = Scene.v().getReachableMethods();
 			QueueReader<MethodOrMethodContext> qr = reachableMethods.listener();

@@ -1,6 +1,6 @@
 package test;
 
-import benchmark.internal.BenchmarkN;
+import benchmark.internal.Benchmark;
 import benchmark.objects.A;
 import benchmark.objects.B;
 
@@ -22,44 +22,25 @@ public class FieldSensitivity {
     y.f = x.f;
   }
 
-  private void test() {
-    BenchmarkN.alloc(1);
+  private void test() {	  
+    Benchmark.alloc(1);
     B b = new B();
-    BenchmarkN.alloc(2);
+    Benchmark.alloc(2);
     A a = new A(b);
-    BenchmarkN.alloc(3);
+    Benchmark.alloc(3);
     A c = new A();
-    BenchmarkN.alloc(4);
+    Benchmark.alloc(4);
     B e = new B();
     assign(a, c);
     B d = c.f;
 
-    BenchmarkN.test(1, d);
+    Benchmark.test(1, d); // expected: 1
   }
-  
-  public void test2() {
-    BenchmarkN.alloc(5);
-    B b = new B();
-    BenchmarkN.alloc(6);
-    B c = new B();
-    BenchmarkN.alloc(7);
-    A a1 = new A();
-    BenchmarkN.alloc(8);
-    A a2 = new A();
-    a1.f = b;
-    a2.f = c;
-    BenchmarkN.test(2, a1.f);
-    BenchmarkN.test(3, a2.f);
-  }
-  
 
   public static void main(String[] args) {
 
-    BenchmarkN.alloc(9);
     FieldSensitivity fs2 = new FieldSensitivity();
     fs2.test();
-    fs2.test2();
-    
   }
 
 }

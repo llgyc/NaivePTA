@@ -16,7 +16,7 @@ import soot.Unit;
 import soot.Value;
 import soot.Local;
 import soot.Scene;
-import soot.SootMethod;
+// import soot.SootMethod;
 import soot.jimple.AnyNewExpr;
 import soot.jimple.AssignStmt;
 import soot.jimple.DefinitionStmt;
@@ -42,10 +42,11 @@ public class Anderson {
 	HashSet<UnitWithPos> S;
 	HashSet<SootMethod> RM;
 	// HashSet<CGEdges> CG;
-	HashSet<Edge> CG;
+	HashSet<CGEdge> CG;
 	HashMap<Pointer, HashSet<Location>> pt;
-	TreeMap<Integer, Pointer> queries;
+	TreeMap<Integer, HashSet<Pointer>> queries;
 	CallGraph ncg;
+	HashMap<soot.SootMethod, Integer> sm2id;
 
 	Anderson() {
 		WL = new LinkedList<>();
@@ -56,6 +57,7 @@ public class Anderson {
 		pt = new HashMap<>();
 		queries = new TreeMap<>();
 		ncg = Scene.v().getCallGraph();
+		sm2id = new HashMap<>();
 	}
 	
 	public void solve(SootMethod entry) throws Exception {
@@ -135,16 +137,18 @@ public class Anderson {
 			}
 		}
 		String ans = "";
-		for (Entry<Integer, Pointer> e : queries.entrySet()) {
+		for (Entry<Integer, HashSet<Pointer>> e : queries.entrySet()) {
 			ans += e.getKey().toString() + ":";
-			if (pt.containsKey(e.getValue())) {
-				ArrayList<Integer> tmp = new ArrayList<>();
-				for (Location l : pt.get(e.getValue())) {
-					if (l.id > 0) tmp.add(l.id);
-				}
-				tmp.sort(Comparator.naturalOrder());
-				for (Integer i : tmp) {
-					ans += " " + i.toString();
+			for (Pointer p : e.getValue()) {
+				if (pt.containsKey(p)) {
+					ArrayList<Integer> tmp = new ArrayList<>();
+					for (Location l : pt.get(p)) {
+						if (l.id > 0) tmp.add(l.id);
+					}
+					tmp.sort(Comparator.naturalOrder());
+					for (Integer i : tmp) {
+						ans += " " + i.toString();
+					}
 				}
 			}
 			ans += "\n";
@@ -156,7 +160,8 @@ public class Anderson {
 		if (RM.contains(m)) return;
 		RM.add(m);
 		if (!m.hasActiveBody()) return;
-		int cnt = 0, allocId = 0;
+		Integer cnt = 0;
+		Integer allocId = 0;
 		for (Unit u : m.getActiveBody().getUnits()) {
 			++cnt;
 			UnitWithPos uwp = new UnitWithPos(m, cnt, u);
@@ -175,23 +180,29 @@ public class Anderson {
 					Value v = ie.getArgs().get(1);
 					int id = ((IntConstant) ie.getArgs().get(0)).value;
 					Pointer p = Pointer.getPointer(m, v);
-					queries.put(id, p);
+					if (!queries.containsKey(id)) { queries.put(id, new HashSet<>()); }
+					queries.get(id).add(p);
 				}
 				if (ie.getMethod().toString().equals("<benchmark.internal.Benchmark: void test(int,java.lang.Object)>")) {
 					Value v = ie.getArgs().get(1);
 					int id = ((IntConstant) ie.getArgs().get(0)).value;
 					Pointer p = Pointer.getPointer(m, v);
-					queries.put(id, p);
+					if (!queries.containsKey(id)) { queries.put(id, new HashSet<>()); }
+					queries.get(id).add(p);
 				}
 			} else if (u instanceof DefinitionStmt) {
 				DefinitionStmt ds = (DefinitionStmt) u;
 				if (ds.getRightOp() instanceof AnyNewExpr) {
 					Location l;
 					if (allocId != 0) {
-						l = new Location(true, allocId);
+						l = new Location(allocId, m.ctx);
 						allocId = 0;
 					} else {
-						l = new Location(false, 0);
+						if (!sm2id.containsKey(m.sm)) {
+							sm2id.put(m.sm, --Location.n_cnt);
+						}
+						int tmpId = sm2id.get(m.sm);
+						l = new Location(tmpId, m.ctx);
 					}
 					HashSet<Location> s = new HashSet<>();
 					s.add(l);
@@ -214,7 +225,9 @@ public class Anderson {
 			}
 		}
 		// static call
+		cnt = 0;
 		for (Unit u : m.getActiveBody().getUnits()) {
+			++cnt;
 			InvokeExpr ie;
 			if (u instanceof InvokeStmt) { 
 				// no return value
@@ -236,7 +249,10 @@ public class Anderson {
 			
 			StaticInvokeExpr sie = (StaticInvokeExpr) ie;
 			// All possible method
-			SootMethod tgt = sie.getMethod();
+			soot.SootMethod ssm = sie.getMethod();
+			Context c = new Context(m.ctx.strlist);
+			c.add(m.getDeclaringClass().getName()+m.getSignature()+cnt);
+			SootMethod tgt = new SootMethod(c, ssm);
 			addReachable(tgt);
 			Integer idxcnt = 0;
 			for (Value val : sie.getArgs()) {
@@ -286,14 +302,18 @@ public class Anderson {
 			Iterator<Edge> it = ncg.edgesOutOf(u);
 			while (it.hasNext()) {
 				Edge e = it.next();
-				SootMethod m = e.tgt();
+				soot.SootMethod ssm = e.tgt();
+				Context c = new Context(uwp._sm.ctx.strlist);
+				c.add(uwp._sm.getDeclaringClass().getName()+uwp._sm.getSignature()+uwp._lineno);
+				SootMethod m = new SootMethod(c, ssm);
 				// add <m_this, o_i> 
 				HashSet<Location> s = new HashSet<>();
 				s.add(o); 
 				Pointer mthis = RPointer.getRPointer(m, "#this");
 				WL.add(new Pair<>(mthis, s));
-				if (!CG.contains(e)) {
-					CG.add(e);
+				CGEdge myedge = new CGEdge(uwp._sm, uwp._lineno, m);
+				if (!CG.contains(myedge)) {
+					CG.add(myedge);
 					addReachable(m);
 					Integer idxcnt = 0;
 					for (Value val : iie.getArgs()) {
@@ -341,10 +361,7 @@ public class Anderson {
 
 class SameMethod {
 	public static boolean test(SootMethod m1, SootMethod m2) {
-		if (!(m1.getDeclaringClass().getName().equals(
-			m2.getDeclaringClass().getName()))) return false;
-		if (!(m1.getSignature().equals(m2.getSignature()))) return false;
-		return true;
+		return m1.equals(m2);
 	}
 }
 
@@ -369,6 +386,8 @@ abstract class Pointer {
 		}
 		return false;
 	}
+	// abstract public Context getContext();
+	// abstract public void setContext(Context c);
 	/*
 	sm -> Class && Method
 	Types:
@@ -380,7 +399,7 @@ abstract class Pointer {
 }
 
 class LPointer extends Pointer {
-	public static Pointer getLPointer(SootMethod m, Local l) {
+	public static Pointer getLPointer( SootMethod m, Local l) {
 		LPointer tmp = new LPointer(m, l);
 		for (Pointer p : ptrs) {
 			if (p.equals(tmp)) return p;
@@ -407,6 +426,14 @@ class LPointer extends Pointer {
 	public String toString() {
 		return sm.getDeclaringClass().getName()+sm.getName()+local.getName();
 	}
+	// @Override
+	// public Context getContext() {
+	// 	return ctx;
+	// }
+	// @Override
+	// public void setContext(Context c) {
+	// 	ctx = c;
+	// }
 }
 
 class RPointer extends Pointer {
@@ -456,6 +483,14 @@ class RPointer extends Pointer {
 	public String toString() {
 		return sm.getDeclaringClass().getName()+sm.getName()+name;
 	}
+	// @Override
+	// public Context getContext() {
+	// 	return ctx;
+	// }
+	// @Override
+	// public void setContext(Context c) {
+	// 	ctx = c;
+	// }
 }
 
 class OPointer extends Pointer {
@@ -488,22 +523,30 @@ class OPointer extends Pointer {
 	public String toString() {
 		return loc.toString() + field;
 	}
+	// @Override
+	// public Context getContext() {
+	// 	return loc.ctx;
+	// }
+	// @Override
+	// public void setContext(Context c) {
+	// 	loc.ctx = c;
+	// }
 }
 
 class Location {
-	public static int p_cnt = 0;
 	public static int n_cnt = 0;
+	Context ctx;
 	public int id;
-	Location(boolean isMarked, int o_id) {
-		if (isMarked) {
-			p_cnt = Math.max(p_cnt, o_id);
-			id = o_id;
-		} else id = --n_cnt;
+	Location(int o_id, Context c) {
+		id = o_id;
+		ctx = c;
 	}
 	public boolean equals(Object obj) {
 		if (obj instanceof Location) {
 			Location l = (Location) obj;
-			if (id == l.id) return true;
+			if (id != l.id) return false;
+			if (!ctx.equals(l.ctx)) return false;
+			return true;
 		}
 		return false;
 	}
@@ -528,6 +571,52 @@ class UnitWithPos {
 			UnitWithPos uwp = (UnitWithPos) obj;
 			if (!SameMethod.test(_sm, uwp._sm)) return false;
 			if ((_lineno != uwp._lineno)) return false;
+			return true;
+		}
+		return false;
+	}
+}
+
+class Context {
+	LinkedList<String> strlist;
+	Context() { strlist = new LinkedList<>(); }
+	Context(LinkedList<String> sml) { strlist = (LinkedList<String>)sml.clone(); }
+	public void add(String s) {
+		strlist.addFirst(s);
+		while (strlist.size() > 2) {
+			strlist.removeLast();
+		}
+	}
+	public boolean equals(Object obj) {
+		if (obj instanceof Context) {
+			Context ctx = (Context) obj;
+			if (strlist.size() != ctx.strlist.size()) return false;
+			for (int i = 0; i < strlist.size(); ++i) {
+				String str1 = strlist.get(i);
+				String str2 = ctx.strlist.get(i);
+				if (!str1.equals(str2)) return false;
+			}
+			return true;
+		}
+		return false;
+	}
+};
+
+class CGEdge {
+	SootMethod from;
+	int lineno;
+	SootMethod to;
+	CGEdge(SootMethod fsm, int line, SootMethod tsm) {
+		from = fsm;
+		lineno = line;
+		to = tsm;
+	}
+	public boolean equals(Object obj) {
+		if (obj instanceof CGEdge) {
+			CGEdge cge = (CGEdge) obj;
+			if (!from.equals(cge.from)) return false;
+			if (lineno != cge.lineno) return false;
+			if (!to.equals(cge.to)) return false;
 			return true;
 		}
 		return false;
