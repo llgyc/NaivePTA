@@ -113,20 +113,50 @@ public class Anderson {
 							if (!Pointer.acceptable(jas.getRightOp())) continue;
 							JArrayRef jar = (JArrayRef) jas.getLeftOp();
 							Value x = jar.getBase();
-							String f = "*";
 							Pointer px = Pointer.getPointer(uwp._sm, x);
 							if (!px.equals(n)) continue;
-							Pointer of = OPointer.getOPointer(o, f);
-							Pointer y = Pointer.getPointer(uwp._sm, jas.getRightOp());
-							addEdge(y, of);
+							String f;
+							if (jar.getIndex() instanceof IntConstant) {
+								Integer i = ((IntConstant) jar.getIndex()).value;
+								f = i.toString();
+								// add array.i -> array.*
+								Pointer p1 = OPointer.getOPointer(o, f);
+								Pointer p2 = OPointer.getOPointer(o, "*");
+								addEdge(p1, p2);
+								// add array.+ -> array.i
+								Pointer p3 = OPointer.getOPointer(o, "+");
+								addEdge(p3, p1);
+								// add y -> array.i
+								Pointer of = OPointer.getOPointer(o, f);
+								Pointer y = Pointer.getPointer(uwp._sm, jas.getRightOp());
+								addEdge(y, of);
+							} else {
+								f = "+";
+								Pointer of = OPointer.getOPointer(o, f);
+								Pointer y = Pointer.getPointer(uwp._sm, jas.getRightOp());
+								addEdge(y, of);
+								Pointer p1 = OPointer.getOPointer(o, "*");
+								addEdge(of, p1);								
+							}
 						}
 						if (jas.getRightOp() instanceof JArrayRef) {
 							if (!Pointer.acceptable(jas.getLeftOp())) continue;
 							JArrayRef jar = (JArrayRef) jas.getRightOp();
 							Value x = jar.getBase();
-							String f = "*";
 							Pointer px = Pointer.getPointer(uwp._sm, x);
 							if (!px.equals(n)) continue;
+							String f;
+							if (jar.getIndex() instanceof IntConstant) {
+								Integer i = ((IntConstant) jar.getIndex()).value;
+								f = i.toString();
+								// add array.i -> array.*
+								Pointer p1 = OPointer.getOPointer(o, f);
+								Pointer p2 = OPointer.getOPointer(o, "*");
+								addEdge(p1, p2);
+								// add array.+ -> array.i
+								Pointer p3 = OPointer.getOPointer(o, "+");
+								addEdge(p3, p1);
+							} else f = "*";
 							Pointer of = OPointer.getOPointer(o, f);
 							Pointer y = Pointer.getPointer(uwp._sm, jas.getLeftOp());
 							addEdge(of, y);
@@ -159,6 +189,11 @@ public class Anderson {
 	void addReachable(SootMethod m) throws Exception {
 		if (RM.contains(m)) return;
 		RM.add(m);
+		System.out.println("================");
+		System.out.println(m.getDeclaringClass().getName()+" "+m.getSignature());
+		System.out.println(m.ctx.strlist.size());
+		if (m.ctx.strlist.size() > 0) System.out.println(m.ctx.strlist.get(0));
+		if (m.ctx.strlist.size() > 1) System.out.println(m.ctx.strlist.get(1));
 		if (!m.hasActiveBody()) return;
 		Integer cnt = 0;
 		Integer allocId = 0;
@@ -256,16 +291,20 @@ public class Anderson {
 			addReachable(tgt);
 			Integer idxcnt = 0;
 			for (Value val : sie.getArgs()) {
-				Pointer a = Pointer.getPointer(m, val);
-				Pointer p = RPointer.getRPointer(tgt, "#" + idxcnt.toString());
-				addEdge(a, p);
+				if (Pointer.acceptable(val)) {
+					Pointer a = Pointer.getPointer(m, val);
+					Pointer p = RPointer.getRPointer(tgt, "#" + idxcnt.toString());
+					addEdge(a, p);
+				}
 				idxcnt++;
 			}
 			if (u instanceof AssignStmt) {
 				Value val = ((AssignStmt) u).getLeftOp();
-				Pointer r = Pointer.getPointer(m, val);
-				Pointer mret = RPointer.getRPointer(tgt, "#ret");
-				addEdge(mret, r);
+				if (Pointer.acceptable(val)) {
+					Pointer r = Pointer.getPointer(m, val);
+					Pointer mret = RPointer.getRPointer(tgt, "#ret");
+					addEdge(mret, r);
+				}
 			}
 
 		}
@@ -317,16 +356,20 @@ public class Anderson {
 					addReachable(m);
 					Integer idxcnt = 0;
 					for (Value val : iie.getArgs()) {
-						Pointer a = Pointer.getPointer(uwp._sm, val);
-						Pointer p = RPointer.getRPointer(m, "#" + idxcnt.toString());
-						addEdge(a, p);
+						if (Pointer.acceptable(val)) {
+							Pointer a = Pointer.getPointer(uwp._sm, val);
+							Pointer p = RPointer.getRPointer(m, "#" + idxcnt.toString());
+							addEdge(a, p);
+						}
 						idxcnt++;
 					}
 					if (u instanceof AssignStmt) {
 						Value val = ((AssignStmt) u).getLeftOp();
-						Pointer r = Pointer.getPointer(uwp._sm, val);
-						Pointer mret = RPointer.getRPointer(m, "#ret");
-						addEdge(mret, r);
+						if (Pointer.acceptable(val)) {
+							Pointer r = Pointer.getPointer(uwp._sm, val);
+							Pointer mret = RPointer.getRPointer(m, "#ret");
+							addEdge(mret, r);
+						}
 					}
 				}
 			}
@@ -386,8 +429,6 @@ abstract class Pointer {
 		}
 		return false;
 	}
-	// abstract public Context getContext();
-	// abstract public void setContext(Context c);
 	/*
 	sm -> Class && Method
 	Types:
@@ -413,6 +454,7 @@ class LPointer extends Pointer {
 	}
 	public SootMethod sm;
 	Local local;
+	@Override
 	public boolean equals(Object obj) {
 		if (obj instanceof LPointer) {
 			LPointer lp = (LPointer) obj;
@@ -423,17 +465,17 @@ class LPointer extends Pointer {
 		return false;
 	}
 	@Override
+    public int hashCode() {
+        final int prime = 998244353;
+        int res = 1;
+        res = res * prime + sm.hashCode();
+        res = res * prime + local.getName().hashCode();
+        return res;
+    }
+	@Override
 	public String toString() {
 		return sm.getDeclaringClass().getName()+sm.getName()+local.getName();
 	}
-	// @Override
-	// public Context getContext() {
-	// 	return ctx;
-	// }
-	// @Override
-	// public void setContext(Context c) {
-	// 	ctx = c;
-	// }
 }
 
 class RPointer extends Pointer {
@@ -470,6 +512,7 @@ class RPointer extends Pointer {
 	}
 	public SootMethod sm;
 	String name;
+	@Override
 	public boolean equals(Object obj) {
 		if (obj instanceof RPointer) {
 			RPointer rp = (RPointer) obj;
@@ -480,17 +523,17 @@ class RPointer extends Pointer {
 		return false;
 	}
 	@Override
+    public int hashCode() {
+        final int prime = 998244353;
+        int res = 1;
+        res = res * prime + sm.hashCode();
+		res = res * prime + name.hashCode();
+        return res;
+    }
+	@Override
 	public String toString() {
 		return sm.getDeclaringClass().getName()+sm.getName()+name;
 	}
-	// @Override
-	// public Context getContext() {
-	// 	return ctx;
-	// }
-	// @Override
-	// public void setContext(Context c) {
-	// 	ctx = c;
-	// }
 }
 
 class OPointer extends Pointer {
@@ -508,6 +551,7 @@ class OPointer extends Pointer {
 	}
 	Location loc;
 	String field;
+	@Override
 	public boolean equals(Object obj) {
 		if (obj instanceof OPointer) {
 			OPointer op = (OPointer) obj;
@@ -520,17 +564,17 @@ class OPointer extends Pointer {
 		return false;
 	}
 	@Override
+    public int hashCode() {
+        final int prime = 998244353;
+        int res = 1;
+        res = res * prime + loc.hashCode();
+		res = res * prime + field.hashCode();
+        return res;
+    }
+	@Override
 	public String toString() {
 		return loc.toString() + field;
 	}
-	// @Override
-	// public Context getContext() {
-	// 	return loc.ctx;
-	// }
-	// @Override
-	// public void setContext(Context c) {
-	// 	loc.ctx = c;
-	// }
 }
 
 class Location {
@@ -541,6 +585,7 @@ class Location {
 		id = o_id;
 		ctx = c;
 	}
+	@Override
 	public boolean equals(Object obj) {
 		if (obj instanceof Location) {
 			Location l = (Location) obj;
@@ -550,6 +595,14 @@ class Location {
 		}
 		return false;
 	}
+	@Override
+    public int hashCode() {
+        final int prime = 998244353;
+        int res = 1;
+        res = res * prime + ctx.hashCode();
+        res = res * prime + id;
+        return res;
+    }
 	@Override
 	public String toString() {
 		Integer i = id;
@@ -566,6 +619,7 @@ class UnitWithPos {
 		_lineno = lineno;
 		_u = u;
 	}
+	@Override
 	public boolean equals(Object obj) {
 		if (obj instanceof UnitWithPos) {
 			UnitWithPos uwp = (UnitWithPos) obj;
@@ -575,6 +629,14 @@ class UnitWithPos {
 		}
 		return false;
 	}
+	@Override
+    public int hashCode() {
+        final int prime = 998244353;
+        int res = 1;
+        res = res * prime + _sm.hashCode();
+		res = res * prime + _lineno;
+        return res;
+    }
 }
 
 class Context {
@@ -587,6 +649,7 @@ class Context {
 			strlist.removeLast();
 		}
 	}
+	@Override
 	public boolean equals(Object obj) {
 		if (obj instanceof Context) {
 			Context ctx = (Context) obj;
@@ -600,6 +663,16 @@ class Context {
 		}
 		return false;
 	}
+	@Override
+    public int hashCode() {
+        final int prime = 998244353;
+        int res = 1;
+        res = res * prime + strlist.size();
+		for (String s : strlist) {
+			res = res * prime + s.hashCode();
+		}
+        return res;
+    }
 };
 
 class CGEdge {
@@ -611,6 +684,7 @@ class CGEdge {
 		lineno = line;
 		to = tsm;
 	}
+	@Override
 	public boolean equals(Object obj) {
 		if (obj instanceof CGEdge) {
 			CGEdge cge = (CGEdge) obj;
@@ -621,4 +695,13 @@ class CGEdge {
 		}
 		return false;
 	}
+	@Override
+    public int hashCode() {
+        final int prime = 998244353;
+        int res = 1;
+        res = res * prime + from.hashCode();
+		res = res * prime + lineno;
+		res = res * prime + to.hashCode();
+        return res;
+    }
 }

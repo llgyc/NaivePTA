@@ -26,6 +26,7 @@ public class SootMethod {
     String getName() {
         return sm.getName();
     }
+    @Override
 	public boolean equals(Object obj) {
 		if (obj instanceof SootMethod) {
 			SootMethod cm = (SootMethod) obj;
@@ -37,4 +38,13 @@ public class SootMethod {
 		}
 		return false;
 	}
+    @Override
+    public int hashCode() {
+        final int prime = 998244353;
+        int res = 1;
+        res = res * prime + ctx.hashCode();
+        res = res * prime + getDeclaringClass().getName().hashCode();
+        res = res * prime + getSignature().hashCode();
+        return res;
+    }
 }
