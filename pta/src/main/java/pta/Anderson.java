@@ -362,36 +362,34 @@ public class Anderson {
 			
 			// All possible method
 			if (id2class.containsKey(o.id)) {
-				Set<soot.SootMethod> sms = fh.resolveAbstractDispatch(id2class.get(o.id), iie.getMethod());
-				for (soot.SootMethod ssm : sms) {
-					Context c = new Context(uwp._sm.ctx.strlist);
-					c.add(uwp._sm.getDeclaringClass().getName()+uwp._sm.getSignature()+uwp._lineno);
-					SootMethod m = new SootMethod(c, ssm);
-					// add <m_this, o_i> 
-					HashSet<Location> s = new HashSet<>();
-					s.add(o); 
-					Pointer mthis = RPointer.getRPointer(m, "#this");
-					WL.add(new Pair<>(mthis, s));
-					CGEdge myedge = new CGEdge(uwp._sm, uwp._lineno, m);
-					if (!CG.contains(myedge)) {
-						CG.add(myedge);
-						addReachable(m);
-						Integer idxcnt = 0;
-						for (Value val : iie.getArgs()) {
-							if (Pointer.acceptable(val)) {
-								Pointer a = Pointer.getPointer(uwp._sm, val);
-								Pointer p = RPointer.getRPointer(m, "#" + idxcnt.toString());
-								addEdge(a, p);
-							}
-							idxcnt++;
+				soot.SootMethod ssm = fh.resolveConcreteDispatch(id2class.get(o.id), iie.getMethod());
+				Context c = new Context(uwp._sm.ctx.strlist);
+				c.add(uwp._sm.getDeclaringClass().getName()+uwp._sm.getSignature()+uwp._lineno);
+				SootMethod m = new SootMethod(c, ssm);
+				// add <m_this, o_i> 
+				HashSet<Location> s = new HashSet<>();
+				s.add(o); 
+				Pointer mthis = RPointer.getRPointer(m, "#this");
+				WL.add(new Pair<>(mthis, s));
+				CGEdge myedge = new CGEdge(uwp._sm, uwp._lineno, m);
+				if (!CG.contains(myedge)) {
+					CG.add(myedge);
+					addReachable(m);
+					Integer idxcnt = 0;
+					for (Value val : iie.getArgs()) {
+						if (Pointer.acceptable(val)) {
+							Pointer a = Pointer.getPointer(uwp._sm, val);
+							Pointer p = RPointer.getRPointer(m, "#" + idxcnt.toString());
+							addEdge(a, p);
 						}
-						if (u instanceof AssignStmt) {
-							Value val = ((AssignStmt) u).getLeftOp();
-							if (Pointer.acceptable(val)) {
-								Pointer r = Pointer.getPointer(uwp._sm, val);
-								Pointer mret = RPointer.getRPointer(m, "#ret");
-								addEdge(mret, r);
-							}
+						idxcnt++;
+					}
+					if (u instanceof AssignStmt) {
+						Value val = ((AssignStmt) u).getLeftOp();
+						if (Pointer.acceptable(val)) {
+							Pointer r = Pointer.getPointer(uwp._sm, val);
+							Pointer mret = RPointer.getRPointer(m, "#ret");
+							addEdge(mret, r);
 						}
 					}
 				}
@@ -432,7 +430,6 @@ public class Anderson {
 					}
 				}
 			}
-			// TODO: more detailed dispatch
 		}
 	}
 
