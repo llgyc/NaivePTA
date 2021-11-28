@@ -16,6 +16,7 @@ import soot.Unit;
 import soot.Value;
 import soot.Local;
 import soot.Scene;
+import soot.SootClass;
 // import soot.SootMethod;
 import soot.jimple.AnyNewExpr;
 import soot.jimple.AssignStmt;
@@ -31,9 +32,11 @@ import soot.jimple.ThisRef;
 import soot.jimple.internal.JArrayRef;
 import soot.jimple.internal.JAssignStmt;
 import soot.jimple.internal.JInstanceFieldRef;
+import soot.jimple.internal.JNewExpr;
 import soot.jimple.internal.JReturnStmt;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.jimple.toolkits.callgraph.Edge;
+import soot.FastHierarchy;
 
 public class Anderson {
 	
@@ -47,6 +50,8 @@ public class Anderson {
 	TreeMap<Integer, HashSet<Pointer>> queries;
 	CallGraph ncg;
 	HashMap<soot.SootMethod, Integer> sm2id;
+	FastHierarchy fh;
+	HashMap<Integer, SootClass> id2class;
 
 	Anderson() {
 		WL = new LinkedList<>();
@@ -58,6 +63,8 @@ public class Anderson {
 		queries = new TreeMap<>();
 		ncg = Scene.v().getCallGraph();
 		sm2id = new HashMap<>();
+		fh = Scene.v().getFastHierarchy();
+		id2class = new HashMap<>();
 	}
 	
 	public void solve(SootMethod entry) throws Exception {
@@ -229,8 +236,19 @@ public class Anderson {
 				DefinitionStmt ds = (DefinitionStmt) u;
 				if (ds.getRightOp() instanceof AnyNewExpr) {
 					Location l;
+					SootClass sc;
+					if (ds.getRightOp() instanceof JNewExpr) {
+						sc = ((JNewExpr) ds.getRightOp()).getBaseType().getSootClass();
+					} else {
+						sc = null;
+					}
 					if (allocId != 0) {
 						l = new Location(allocId, m.ctx);
+						if (sc != null) {
+							if (!id2class.containsKey(allocId)) {
+								id2class.put(allocId, sc);
+							}
+						}
 						allocId = 0;
 					} else {
 						if (!sm2id.containsKey(m.sm)) {
@@ -238,6 +256,11 @@ public class Anderson {
 						}
 						int tmpId = sm2id.get(m.sm);
 						l = new Location(tmpId, m.ctx);
+						if (sc != null) {
+							if (!id2class.containsKey(tmpId)) {
+								id2class.put(tmpId, sc);
+							}
+						}
 					}
 					HashSet<Location> s = new HashSet<>();
 					s.add(l);
@@ -338,37 +361,73 @@ public class Anderson {
 			if (!xx.equals(x)) continue;
 			
 			// All possible method
-			Iterator<Edge> it = ncg.edgesOutOf(u);
-			while (it.hasNext()) {
-				Edge e = it.next();
-				soot.SootMethod ssm = e.tgt();
-				Context c = new Context(uwp._sm.ctx.strlist);
-				c.add(uwp._sm.getDeclaringClass().getName()+uwp._sm.getSignature()+uwp._lineno);
-				SootMethod m = new SootMethod(c, ssm);
-				// add <m_this, o_i> 
-				HashSet<Location> s = new HashSet<>();
-				s.add(o); 
-				Pointer mthis = RPointer.getRPointer(m, "#this");
-				WL.add(new Pair<>(mthis, s));
-				CGEdge myedge = new CGEdge(uwp._sm, uwp._lineno, m);
-				if (!CG.contains(myedge)) {
-					CG.add(myedge);
-					addReachable(m);
-					Integer idxcnt = 0;
-					for (Value val : iie.getArgs()) {
-						if (Pointer.acceptable(val)) {
-							Pointer a = Pointer.getPointer(uwp._sm, val);
-							Pointer p = RPointer.getRPointer(m, "#" + idxcnt.toString());
-							addEdge(a, p);
+			if (id2class.containsKey(o.id)) {
+				Set<soot.SootMethod> sms = fh.resolveAbstractDispatch(id2class.get(o.id), iie.getMethod());
+				for (soot.SootMethod ssm : sms) {
+					Context c = new Context(uwp._sm.ctx.strlist);
+					c.add(uwp._sm.getDeclaringClass().getName()+uwp._sm.getSignature()+uwp._lineno);
+					SootMethod m = new SootMethod(c, ssm);
+					// add <m_this, o_i> 
+					HashSet<Location> s = new HashSet<>();
+					s.add(o); 
+					Pointer mthis = RPointer.getRPointer(m, "#this");
+					WL.add(new Pair<>(mthis, s));
+					CGEdge myedge = new CGEdge(uwp._sm, uwp._lineno, m);
+					if (!CG.contains(myedge)) {
+						CG.add(myedge);
+						addReachable(m);
+						Integer idxcnt = 0;
+						for (Value val : iie.getArgs()) {
+							if (Pointer.acceptable(val)) {
+								Pointer a = Pointer.getPointer(uwp._sm, val);
+								Pointer p = RPointer.getRPointer(m, "#" + idxcnt.toString());
+								addEdge(a, p);
+							}
+							idxcnt++;
 						}
-						idxcnt++;
+						if (u instanceof AssignStmt) {
+							Value val = ((AssignStmt) u).getLeftOp();
+							if (Pointer.acceptable(val)) {
+								Pointer r = Pointer.getPointer(uwp._sm, val);
+								Pointer mret = RPointer.getRPointer(m, "#ret");
+								addEdge(mret, r);
+							}
+						}
 					}
-					if (u instanceof AssignStmt) {
-						Value val = ((AssignStmt) u).getLeftOp();
-						if (Pointer.acceptable(val)) {
-							Pointer r = Pointer.getPointer(uwp._sm, val);
-							Pointer mret = RPointer.getRPointer(m, "#ret");
-							addEdge(mret, r);
+				}
+			} else {
+				Iterator<Edge> it = ncg.edgesOutOf(u);
+				while (it.hasNext()) {
+					Edge e = it.next();
+					soot.SootMethod ssm = e.tgt();
+					Context c = new Context(uwp._sm.ctx.strlist);
+					c.add(uwp._sm.getDeclaringClass().getName()+uwp._sm.getSignature()+uwp._lineno);
+					SootMethod m = new SootMethod(c, ssm);
+					// add <m_this, o_i> 
+					HashSet<Location> s = new HashSet<>();
+					s.add(o); 
+					Pointer mthis = RPointer.getRPointer(m, "#this");
+					WL.add(new Pair<>(mthis, s));
+					CGEdge myedge = new CGEdge(uwp._sm, uwp._lineno, m);
+					if (!CG.contains(myedge)) {
+						CG.add(myedge);
+						addReachable(m);
+						Integer idxcnt = 0;
+						for (Value val : iie.getArgs()) {
+							if (Pointer.acceptable(val)) {
+								Pointer a = Pointer.getPointer(uwp._sm, val);
+								Pointer p = RPointer.getRPointer(m, "#" + idxcnt.toString());
+								addEdge(a, p);
+							}
+							idxcnt++;
+						}
+						if (u instanceof AssignStmt) {
+							Value val = ((AssignStmt) u).getLeftOp();
+							if (Pointer.acceptable(val)) {
+								Pointer r = Pointer.getPointer(uwp._sm, val);
+								Pointer mret = RPointer.getRPointer(m, "#ret");
+								addEdge(mret, r);
+							}
 						}
 					}
 				}
