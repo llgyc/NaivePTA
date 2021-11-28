@@ -15,7 +15,6 @@ import javafx.util.Pair;
 import soot.Unit;
 import soot.Value;
 import soot.Local;
-import soot.PrimType;
 import soot.Scene;
 import soot.SootMethod;
 import soot.jimple.AnyNewExpr;
