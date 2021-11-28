@@ -30,6 +30,7 @@ public class WholeProgramTransformer extends SceneTransformer {
 			SootMethod m = mainClass.getMethodByName("main");
 			anderson.solve(m);
         } catch (Exception e) {
+			e.printStackTrace();
 			TreeMap<Integer, Local> queries = new TreeMap<Integer, Local>();
 
 			ReachableMethods reachableMethods = Scene.v().getReachableMethods();
